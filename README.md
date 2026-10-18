@@ -30,6 +30,7 @@ Nothing else is installed: the script has no dependencies.
 node record.mjs https://example.com assets/signup.mp4 --steps signup.json   # film a take
 node record.mjs again assets/signup.mp4                                     # film it again, move its clips
 node record.mjs inspect https://example.com                                 # what can be pointed at, with selectors
+node record.mjs inspect https://example.com --steps open-menu.json          # the same, after doing some steps
 ```
 
 Steps are a JSON list: `click`, `hover`, `fill`, `type`, `press`, `select`, `scroll`, `scrollTo`, `wait`, `idle`,
@@ -41,7 +42,8 @@ A take writes three files beside the video:
   move, click and key). Change the steps here and run `again` to film something different.
 - `signup.cursor.html`: an OpenFilm page that draws the pointer and its clicks. Put it on the track above the video
   with the same `at`, `#t=` and box, and it follows the take. The video itself has no pointer, so you can restyle
-  or drop it.
+  or drop it. A page plays at one speed, so for a clip you want to speed up, film the take with `--pointer`: the
+  pointer is then drawn into the video.
 - `signup.mp4`: H.264, 30 fps, 2880 x 1620 at the default 1440 x 810 window and scale 2.
 
 The page runs on a virtual clock: time moves one frame per captured frame, for `requestAnimationFrame`, timers,

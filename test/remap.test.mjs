@@ -86,6 +86,15 @@ test('a mark and the step after it share a moment: either one holds the clip', (
   assert.equal(r.changes[0].to, '#t=3.75,4.25');
 });
 
+test('clips of a take that did not move are counted as in place, not as missing', () => {
+  const html = film('<section><video id="same" src="assets/signup.mp4#t=2.5,4.5"></video><iframe src="assets/signup.cursor.html#t=2.5,4.5"></iframe></section>');
+  const r = remapFilm(html, { filmDir: DIR, files: FILES, before, after: before });
+  assert.deepEqual(r.changes, []);
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(r.kept, ['same', 'assets/signup.cursor.html']);
+  assert.equal(r.text, html);
+});
+
 test('a clip that would run past the new end is listed', () => {
   const short = take([0, 0.5, 2, 2, 4, 5, 5], 5.4);
   const html = film('<section><video id="late" src="assets/signup.mp4#t=5.1,5.9"></video></section>');

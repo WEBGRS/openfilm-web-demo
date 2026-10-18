@@ -7,7 +7,7 @@
   "license": "MIT",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "node --test --test-concurrency=1 --test-timeout=900000 test/",
+    "test": "node --test --test-concurrency=1 --test-timeout=900000 \"test/*.test.mjs\"",
     "check": "node scripts/check.mjs"
   }
 }

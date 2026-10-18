@@ -27,6 +27,7 @@ Options for a take and for inspect:
   --fps <n>         frames per second (${FPS})
   --dark            the page in its dark theme
   --hide <css>      hidden in every frame (a cookie banner, a chat bubble); give it again for more
+  --pointer         the pointer drawn into the video too, so it follows the video's speed
   --browser <path>  Chrome or Edge; found by itself, or named by WEB_DEMO_BROWSER
   --ffmpeg <path>   ffmpeg; on the PATH, or named by WEB_DEMO_FFMPEG
 
@@ -54,7 +55,8 @@ Beside the video:
   <name>.record.json   what to record (url, steps, size, scale, fps, dark, hide: change them and run again) and
                        what happened ("take": when each step began, every pointer move, click and key)
   <name>.cursor.html   a page drawing the pointer and its clicks; on the track above the video, with the same at,
-                       #t= and box, it follows the recording
+                       #t= and box, it follows the recording. A page plays at one speed: for a clip with a speed,
+                       film the take with --pointer instead
 
 again records from <name>.record.json and puts the new take in place of the old. In film.html each clip of the
 take (the video and its cursor page) keeps its place and its length on the film; its #t= moves with the step or mark
@@ -212,7 +214,24 @@ const helpers = (hide) => `(() => {
     }
     return null;
   };
+  let shade = null;
+  const draw = (x, y, pressed, ring) => {
+    if (!shade || !shade.host.isConnected) {
+      const host = document.createElement('web-demo-pointer');
+      host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;display:block';
+      shade = host.attachShadow({ mode: 'closed' });
+      shade.innerHTML = '<svg width="100%" height="100%" style="position:absolute;inset:0;overflow:visible"><circle fill="none" stroke="#000" stroke-width="3"></circle><path d="M0 0 L0 23 L6 17.6 L10.4 27.4 L14.6 25.5 L10.2 15.9 L17.6 15.9 Z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"></path></svg>';
+      document.documentElement.appendChild(host);
+    }
+    const [c, a] = [shade.querySelector('circle'), shade.querySelector('path')];
+    a.setAttribute('transform', 'translate(' + x + ' ' + y + ') scale(' + (pressed ? 0.86 : 1) + ')');
+    c.setAttribute('cx', x);
+    c.setAttribute('cy', y);
+    c.setAttribute('r', ring >= 0 && ring < 1 ? 6 + 26 * Math.sqrt(ring) : 0);
+    c.setAttribute('stroke-opacity', ring >= 0 && ring < 1 ? 0.45 * (1 - ring) : 0);
+  };
   window.__wd = {
+    pointer: draw,
     find,
     box(sel) {
       const e = find(sel);
@@ -347,6 +366,7 @@ export class Browser {
       '--disable-default-apps', '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows', '--disable-features=Translate,MediaRouter,OptimizationHints',
       '--hide-scrollbars', '--mute-audio', '--force-color-profile=srgb', '--password-store=basic', '--use-mock-keychain',
+      '--disable-crash-reporter', '--disable-breakpad',
       ...(process.env.WEB_DEMO_CHROME_ARGS ? process.env.WEB_DEMO_CHROME_ARGS.split(' ') : []),
       'about:blank',
     ];
@@ -403,11 +423,20 @@ export class Browser {
   }
 
   async close() {
-    if (!this.closed) await this.send('Browser.close', {}, undefined, 5000).catch(() => undefined);
-    if (this.proc.exitCode === null && this.proc.signalCode === null) {
-      this.proc.kill();
-      await Promise.race([new Promise((r) => this.proc.once('exit', r)), sleep(5000)]);
+    const alive = () => this.proc.exitCode === null && this.proc.signalCode === null;
+    const exited = new Promise((r) => (alive() ? this.proc.once('exit', r) : r()));
+    if (!this.closed) await this.send('Browser.close', {}, undefined, 10000).catch(() => undefined);
+    // Chrome answers Browser.close a moment before it exits
+    await Promise.race([exited, sleep(5000)]);
+    if (alive()) {
+      // Its helpers go with it; taskkill can take a minute on a busy Windows, so it is not waited for
+      if (process.platform === 'win32') spawn('taskkill', ['/pid', String(this.proc.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).unref();
+      await Promise.race([exited, sleep(3000)]);
+      if (alive()) this.proc.kill('SIGKILL');
+      await Promise.race([exited, sleep(3000)]);
     }
+    // A helper process Chrome left behind can hold these pipes open and keep this process from ever exiting
+    for (const s of [this.proc.stdio[3], this.proc.stdio[4], this.proc.stderr]) s?.destroy();
     // Windows keeps the profile locked for a moment after exit
     for (let i = 0; i < 20; i++) {
       try {
@@ -527,26 +556,34 @@ function openEncoder(ffmpeg, out, fps, width, height) {
   const proc = spawn(ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
   let err = '';
   let dead = null;
+  let broken = false;
   proc.stderr.on('data', (d) => (err = (err + d).slice(-2000)));
   proc.on('error', (e) => (dead = new Error(e.code === 'ENOENT' ? `ffmpeg was not found (${ffmpeg}): install it, OpenFilm needs it too, or name it with --ffmpeg` : `ffmpeg: ${e.message}`)));
-  proc.stdin.on('error', (e) => (dead ??= new Error(`ffmpeg: ${e.message}`)));
+  // A write into an encoder that quit fails first; what it said on the way out is the error worth reporting
+  proc.stdin.on('error', () => (broken = true));
   const done = new Promise((res) => proc.on('close', (code) => {
     if (code !== 0) dead ??= new Error(`ffmpeg stopped (${code}): ${err.trim()}`);
     res();
   }));
+  const failed = async () => {
+    await done;
+    return dead ?? new Error(`ffmpeg stopped: ${err.trim()}`);
+  };
   return {
     async write(buf) {
-      if (dead) throw dead;
+      if (dead || broken) throw await failed();
       if (!proc.stdin.write(buf)) await Promise.race([new Promise((r) => proc.stdin.once('drain', r)), done]);
-      if (dead) throw dead;
+      if (dead || broken) throw await failed();
     },
     async end() {
       proc.stdin.end();
       await done;
       if (dead) throw dead;
     },
-    kill() {
+    // Stopped and gone, so its file can be removed
+    async stop() {
       proc.kill();
+      await done;
     },
   };
 }
@@ -563,6 +600,7 @@ class Take {
     this.events = [];
     this.mouse = { x: o.width / 2, y: o.height / 2 };
     this.pressed = false;
+    this.downAt = -Infinity;
     this.rand = rng(7);
     this.recording = false;
     this.enc = null;
@@ -585,7 +623,10 @@ class Take {
   }
 
   async snap() {
-    await this.page.evaluate(`(async () => { if (!window.__vt) return; window.__vt.advance(${this.dt}); await window.__vt.mediaReady(); })()`);
+    const draw = this.o.pointer && this.recording
+      ? `window.__wd && window.__wd.pointer(${this.mouse.x}, ${this.mouse.y}, ${this.pressed}, ${(this.frame / this.fps - this.downAt) / 0.5});`
+      : '';
+    await this.page.evaluate(`(async () => { if (!window.__vt) return; window.__vt.advance(${this.dt}); await window.__vt.mediaReady(); ${draw} })()`);
     if (!this.recording) return;
     const { data } = await this.page.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, captureBeyondViewport: false }, 60000);
     await this.enc.write(Buffer.from(data, 'base64'));
@@ -683,6 +724,7 @@ class Take {
     await this.move({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
     await this.wait(120);
     this.pressed = true;
+    this.downAt = this.frame / this.fps;
     this.log('down', this.at());
     await this.mouseEvent('mousePressed');
     await this.wait(90);
@@ -812,7 +854,7 @@ export async function recordTake(o) {
   const times = [];
   try {
     const page = await openPage(b, { ...size, scale, dark: !!o.dark, hide, clock: true });
-    take = new Take(page, { ...size, scale, fps, ffmpeg, out: tmpOut, videoWidth, videoHeight, log });
+    take = new Take(page, { ...size, scale, fps, ffmpeg, out: tmpOut, videoWidth, videoHeight, log, pointer: !!o.pointer });
     log(`opening ${o.url}`);
     await take.goto(o.url);
     await take.idle(1200);
@@ -829,12 +871,16 @@ export async function recordTake(o) {
     await take.wait(500);
     await take.enc.end();
   } catch (e) {
-    take?.enc?.kill();
-    rmSync(work, { recursive: true, force: true });
-    throw e;
-  } finally {
+    await take?.enc?.stop();
     await b.close();
+    try {
+      rmSync(work, { recursive: true, force: true, maxRetries: 5 });
+    } catch {
+      // A folder left in the temp folder is no reason to hide what went wrong
+    }
+    throw e;
   }
+  await b.close();
 
   const name = basename(out, extname(out));
   const record = {
@@ -845,6 +891,7 @@ export async function recordTake(o) {
     fps,
     dark: !!o.dark,
     hide,
+    pointer: !!o.pointer,
     take: {
       by: `web-demo ${VERSION}`,
       recorded: new Date().toISOString(),
@@ -1004,6 +1051,7 @@ export function remapFilm(text, { filmDir, files, before, after }) {
   const edits = [];
   const changes = [];
   const problems = [];
+  const kept = [];
   for (const clip of scanClips(text)) {
     const src = clip.attrs.find((a) => a.name === 'src');
     if (!src || src.value == null) continue;
@@ -1043,11 +1091,11 @@ export function remapFilm(text, { filmDir, files, before, after }) {
     if (value !== src.value) {
       edits.push({ start: src.vStart, end: src.vEnd, value });
       changes.push({ id, from: frag ? `#${frag}` : '(all of it)', to: `#t=${fmt(nin)},${fmt(nout)}`, by: pick.label });
-    }
+    } else kept.push(id);
   }
   let out = text;
   for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.value + out.slice(e.end);
-  return { text: out, changes, problems };
+  return { text: out, changes, problems, kept };
 }
 
 /** How each step and mark moved between two takes. */
@@ -1090,7 +1138,8 @@ export async function again(videoArg, o = {}) {
       plan = remapFilm(readFileSync(film, 'utf8'), { filmDir: dirname(film), files: [video, cursorFileFor(video)], before: before.take, after });
       for (const c of plan.changes) lines.push(`  clip ${c.id}: ${c.from} -> ${c.to} (with ${c.by})`);
       for (const p of plan.problems) lines.push(`  LISTED clip ${p.id}: ${p.why}`);
-      if (!plan.changes.length && !plan.problems.length) lines.push(`  ${shown(film)} has no clip of this take`);
+      if (plan.kept.length) lines.push(`  ${plan.kept.length} clip${plan.kept.length > 1 ? 's' : ''} of this take already in place: ${plan.kept.join(', ')}`);
+      if (!plan.changes.length && !plan.problems.length && !plan.kept.length) lines.push(`  ${shown(film)} has no clip of this take`);
     } else lines.push('  no film.html found, so no clip was moved');
     if (o.dryRun) {
       lines.push('dry run: nothing was changed');
@@ -1100,7 +1149,11 @@ export async function again(videoArg, o = {}) {
     if (plan?.changes.length) writeFileSync(film, plan.text);
     return { lines, plan, before, after };
   } finally {
-    rmSync(made.work, { recursive: true, force: true });
+    try {
+      rmSync(made.work, { recursive: true, force: true, maxRetries: 5 });
+    } catch {
+      // Left in the temp folder
+    }
   }
 }
 
@@ -1163,7 +1216,7 @@ async function main(argv) {
     allowPositionals: true,
     options: {
       steps: { type: 'string' }, size: { type: 'string' }, scale: { type: 'string' }, fps: { type: 'string' },
-      dark: { type: 'boolean' }, hide: { type: 'string', multiple: true }, browser: { type: 'string' },
+      dark: { type: 'boolean' }, hide: { type: 'string', multiple: true }, pointer: { type: 'boolean' }, browser: { type: 'string' },
       ffmpeg: { type: 'string' }, film: { type: 'string' }, 'dry-run': { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean' },
     },
@@ -1183,7 +1236,7 @@ async function main(argv) {
   }
   if (p.length !== 2) throw new Error('give the address and the video to write: <url> <take.mp4> --steps <steps>');
   const out = resolve(p[1]);
-  const { record } = await recordTake({ url: p[0], out, steps: readSteps(v.steps), size: v.size, scale: v.scale, fps: v.fps, dark: v.dark, hide: v.hide, browser: v.browser, ffmpeg: v.ffmpeg });
+  const { record } = await recordTake({ url: p[0], out, steps: readSteps(v.steps), size: v.size, scale: v.scale, fps: v.fps, dark: v.dark, hide: v.hide, pointer: v.pointer, browser: v.browser, ffmpeg: v.ffmpeg });
   const t = record.take;
   const marks = t.steps.filter((s) => typeof s.step.mark === 'string');
   console.log([
@@ -1196,8 +1249,12 @@ async function main(argv) {
 
 const same = (x) => (process.platform === 'win32' ? resolve(x).toLowerCase() : resolve(x));
 if (process.argv[1] && same(process.argv[1]) === same(fileURLToPath(import.meta.url))) {
-  main(process.argv.slice(2)).catch((e) => {
-    console.error(`record.mjs: ${e.message}`);
-    process.exit(1);
-  });
+  // Exit once the output is written, whatever handles are left open
+  main(process.argv.slice(2)).then(
+    () => process.stdout.write('', () => process.exit(0)),
+    (e) => {
+      console.error(`record.mjs: ${e.message}`);
+      process.exit(1);
+    },
+  );
 }
