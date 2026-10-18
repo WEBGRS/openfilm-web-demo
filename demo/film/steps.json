@@ -1,0 +1,13 @@
+[
+  {"wait": 600},
+  {"click": "text=\"New note\""},
+  {"fill": ["#title", "Ship the demo video"]},
+  {"fill": ["#body", "Film it once, refilm it after every release"]},
+  {"select": ["#tag", "Work"]},
+  {"mark": "save"},
+  {"click": "text=\"Save\""},
+  {"wait": 1000},
+  {"click": ".chip[data-tag=\"Work\"]"},
+  {"mark": "filtered"},
+  {"wait": 1400}
+]

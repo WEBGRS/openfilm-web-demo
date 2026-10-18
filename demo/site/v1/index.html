@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pinboard</title>
+<style>
+  :root { --ink: #1d2433; --muted: #5b6475; --line: #e3e6ee; --bg: #f6f7fb; --accent: #4f5bd5; --card: #fff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--bg); }
+  header { height: 68px; display: flex; align-items: center; gap: 20px; padding: 0 40px; background: #fff; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; }
+  .logo { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #4f5bd5, #9b5de5); }
+  .search { flex: 1; max-width: 420px; height: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 0 14px; font: inherit; background: var(--bg); }
+  .new { margin-left: auto; height: 40px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  main { padding: 28px 40px; }
+  .chips { display: flex; gap: 8px; margin-bottom: 22px; }
+  .chip { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; }
+  .chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-height: 132px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .tag { display: inline-block; margin-top: 12px; font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #eef0fb; color: var(--accent); }
+  .card.fresh { animation: pop 0.45s ease-out; border-color: var(--accent); box-shadow: 0 6px 22px rgba(79, 91, 213, 0.18); }
+  @keyframes pop { from { transform: scale(0.92); opacity: 0; } to { transform: none; opacity: 1; } }
+  .composer { display: none; position: fixed; inset: 0; background: rgba(29, 36, 51, 0.35); align-items: center; justify-content: center; }
+  .composer.open { display: flex; }
+  .sheet { width: 520px; background: #fff; border-radius: 16px; padding: 26px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2); animation: rise 0.3s ease-out; }
+  @keyframes rise { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .sheet h2 { margin: 0 0 16px; font-size: 20px; }
+  .sheet input, .sheet textarea, .sheet select { width: 100%; font: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+  .sheet textarea { height: 90px; resize: none; }
+  .row { display: flex; justify-content: flex-end; gap: 10px; }
+  .ghost { height: 40px; padding: 0 16px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font: inherit; cursor: pointer; }
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 10px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="logo"></div>Pinboard</div>
+  <input class="search" placeholder="Search notes">
+  <button class="new" id="new">New note</button>
+</header>
+<main>
+  <div class="chips">
+    <button class="chip on" data-tag="">All</button>
+    <button class="chip" data-tag="Ideas">Ideas</button>
+    <button class="chip" data-tag="Work">Work</button>
+    <button class="chip" data-tag="Home">Home</button>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+<div class="composer" id="composer">
+  <div class="sheet">
+    <h2>New note</h2>
+    <input id="title" placeholder="Title" autocomplete="off">
+    <textarea id="body" placeholder="Write something"></textarea>
+    <select id="tag"><option>Ideas</option><option>Work</option><option>Home</option></select>
+    <div class="row"><button class="ghost" id="cancel">Cancel</button><button class="new" id="save">Save</button></div>
+  </div>
+</div>
+<div class="toast" id="toast">Note saved</div>
+<script>
+  const notes = [
+    ['Launch checklist', 'Docs, changelog, the demo video', 'Work'],
+    ['Weekend market', 'Apples, bread, flowers', 'Home'],
+    ['Pricing page', 'Try a yearly toggle', 'Ideas'],
+    ['Team sync', 'Move to Thursdays', 'Work'],
+    ['Reading list', 'Three books on design', 'Home'],
+    ['Onboarding', 'One screen, one action', 'Ideas'],
+  ];
+  const grid = document.getElementById('grid');
+  let filter = '';
+  const draw = (fresh) => {
+    grid.innerHTML = '';
+    notes.filter((n) => !filter || n[2] === filter).forEach((n, i) => {
+      const c = document.createElement('div');
+      c.className = 'card' + (fresh && i === 0 ? ' fresh' : '');
+      c.innerHTML = `<h3></h3><p></p><span class="tag"></span>`;
+      c.querySelector('h3').textContent = n[0];
+      c.querySelector('p').textContent = n[1];
+      c.querySelector('.tag').textContent = n[2];
+      grid.append(c);
+    });
+  };
+  draw();
+  const composer = document.getElementById('composer');
+  document.getElementById('new').onclick = () => { composer.classList.add('open'); document.getElementById('title').focus(); };
+  document.getElementById('cancel').onclick = () => composer.classList.remove('open');
+  document.getElementById('save').onclick = () => {
+    const t = document.getElementById('title').value.trim();
+    if (!t) return;
+    notes.unshift([t, document.getElementById('body').value.trim() || 'Just now', document.getElementById('tag').value]);
+    composer.classList.remove('open');
+    filter = '';
+    document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.dataset.tag === ''));
+    draw(true);
+    const toast = document.getElementById('toast');
+    toast.style.display = 'block';
+    setTimeout(() => (toast.style.display = 'none'), 1600);
+  };
+  document.querySelectorAll('.chip').forEach((chip) => (chip.onclick = () => {
+    filter = chip.dataset.tag;
+    document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === chip));
+    draw();
+  }));
+</script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Notes</title>
+<style>
+  body { margin: 0; font: 18px/1.4 system-ui, sans-serif; background: #f4f4f0; color: #222; }
+  header { height: 72px; display: flex; align-items: center; gap: 16px; padding: 0 32px; background: #fff; border-bottom: 1px solid #ddd; }
+  header h1 { margin: 0; font-size: 26px; }
+  #lane { position: relative; height: 72px; background: #fff; border-bottom: 1px solid #ddd; overflow: hidden; }
+  #runner { position: absolute; top: 8px; left: 0; width: 24px; height: 24px; background: #ff00aa; animation: run 10s linear infinite; }
+  #rafbox { position: absolute; top: 40px; left: 0; width: 24px; height: 24px; background: #00a0ff; }
+  @keyframes run { from { transform: translateX(0); } to { transform: translateX(1000px); } }
+  main { padding: 32px; max-width: 760px; }
+  .row { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+  input, select, button { font: inherit; padding: 8px 12px; }
+  #status { width: 48px; height: 48px; background: #e00000; }
+  #swatch { width: 48px; height: 48px; background: #999999; }
+  #notes li { margin: 6px 0; }
+  .filler { height: 1400px; background: repeating-linear-gradient(#f4f4f0 0 38px, #e8e8e2 38px 40px); }
+  #footer { height: 160px; background: #0030c0; color: #fff; display: flex; align-items: center; justify-content: center; }
+  #toast { position: fixed; right: 24px; bottom: 24px; padding: 10px 16px; background: #222; color: #fff; display: none; }
+</style>
+</head>
+<body>
+<div id="banner" style="height:120px;background:#ffe9a8;display:flex;align-items:center;padding:0 32px">New: notes sync across devices</div>
+<header><h1>Notes</h1><span>v2</span></header>
+<div id="lane"><div id="runner"></div><div id="rafbox"></div></div>
+<main>
+  <div class="row"><input id="title" placeholder="A note" autocomplete="off" style="width:420px"><button id="save">Save</button><div id="status"></div></div>
+  <div class="row"><select id="color"><option value="gray">Gray</option><option value="red">Red</option><option value="green">Green</option></select><div id="swatch"></div></div>
+  <ul id="notes"></ul>
+  <div class="filler"></div>
+</main>
+<div id="footer">The end</div>
+<div id="toast">Saved</div>
+<script>
+  const box = document.getElementById('rafbox');
+  const t0 = performance.now();
+  const tick = (now) => { box.style.transform = `translateX(${((now - t0) / 10) % 1000}px)`; requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  document.getElementById('save').addEventListener('click', () => {
+    const v = document.getElementById('title').value;
+    if (!v) return;
+    const li = document.createElement('li');
+    li.textContent = v;
+    document.getElementById('notes').append(li);
+    document.getElementById('status').style.background = v === 'Buy milk' ? '#00c853' : '#ffd000';
+    const toast = document.getElementById('toast');
+    toast.style.display = 'block';
+    setTimeout(() => (toast.style.display = 'none'), 1500);
+  });
+  document.getElementById('color').addEventListener('change', (e) => {
+    document.getElementById('swatch').style.background = { gray: '#999999', red: '#e00000', green: '#00c853' }[e.target.value];
+  });
+</script>
+</body>
+</html>
