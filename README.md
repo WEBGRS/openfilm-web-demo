@@ -5,13 +5,18 @@ film it again after every release. The edit stays: each clip keeps its place and
 
 ![The same OpenFilm cut of two takes: the first, and one filmed again after the site was redesigned](docs/again.gif)
 
-Left: a 15-second cut made in OpenFilm from one take of a notes app. Right: the app was redesigned (a sidebar, a
-banner, new colors), `record.mjs again` filmed the same steps, and the same cut plays the new take. Nothing in the
-edit was touched by hand. [demo/](demo) has the site, the steps and the film; `node demo/make.mjs` rebuilds this.
+Left: a 15-second cut made in OpenFilm from one take of a notes app, the camera moving in on each click. Right: the
+app was redesigned (a sidebar, a banner, new colors), `record.mjs again` filmed the same steps, and the same cut plays
+the new take. Nothing in the edit was touched by hand. [demo/](demo) has the site, the steps and the film;
+`node demo/make.mjs` rebuilds this.
 
 | | | |
 | --- | --- | --- |
 | <img src="skills/web-demo/cover.jpg" width="200" alt=""> | [Web demo you can refilm](skills/web-demo) | A demo filmed from your live web product by steps, and filmed again after each release with the cut kept. |
+
+For a Windows program rather than a web product, use [app-demo](https://github.com/WEBGRS/openfilm-app-demo). For
+voice-over without a key, [local-voice](https://github.com/WEBGRS/openfilm-local-voice) runs on your own computer and
+times the subtitles.
 
 ## Use it
 
