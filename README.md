@@ -20,7 +20,8 @@ edit was touched by hand. [demo/](demo) has the site, the steps and the film; `n
 - **In your own agent** (Claude Code, Codex and others): `npx skills add WEBGRS/openfilm-web-demo`.
 
 It needs Node 22 or later, Google Chrome or Microsoft Edge, and ffmpeg on the PATH (OpenFilm needs ffmpeg too).
-Nothing else is installed: the script has no dependencies.
+Nothing else is installed: the script has no dependencies, and it sends nothing anywhere; the browser and ffmpeg run
+on your machine.
 
 ## What the agent gets
 
@@ -48,8 +49,8 @@ A take writes three files beside the video:
 
 The page runs on a virtual clock: time moves one frame per captured frame, for `requestAnimationFrame`, timers,
 `Date`, `performance.now()` and CSS animations. A slow machine gives the same smooth take, and the same steps give
-the same pointer path every time. Filming takes six to seven times the take's length at scale 2, and about one and
-a half times at `--scale 1`.
+the same pointer path every time. On a 16 GB Windows laptop, filming took six to seven times the take's length at
+scale 2, and about one and a half times at `--scale 1`.
 
 ## How `again` keeps the edit
 
