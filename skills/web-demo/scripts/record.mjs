@@ -580,9 +580,9 @@ function openEncoder(ffmpeg, out, fps, width, height) {
       await done;
       if (dead) throw dead;
     },
-    // Stopped and gone, so its file can be removed
+    // Stopped and gone, so its file can be removed: SIGTERM leaves an ffmpeg that is waiting on its input running
     async stop() {
-      proc.kill();
+      proc.kill('SIGKILL');
       await done;
     },
   };
