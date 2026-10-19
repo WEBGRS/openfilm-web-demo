@@ -2,11 +2,12 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { again, inspect, recordTake } from '../skills/web-demo/scripts/record.mjs';
+import { Browser, again, findBrowser, inspect, openPage, recordTake } from '../skills/web-demo/scripts/record.mjs';
 import { COLORS, count, frameAt, frameRGB, leftEdge, probe, serve } from './helpers.mjs';
 
 const STEPS = [
@@ -58,7 +59,7 @@ after(async () => {
 
 test('the take is written with its record and its pointer page', () => {
   const video = join(dir, 'assets', 'signup.mp4');
-  for (const f of ['signup.mp4', 'signup.record.json', 'signup.cursor.html']) assert.ok(existsSync(join(dir, 'assets', f)), f);
+  for (const f of ['signup.mp4', 'signup.record.json', 'signup.cursor.html', 'signup.camera.html']) assert.ok(existsSync(join(dir, 'assets', f)), f);
   const p = probe(video);
   assert.equal(p.width, 1440);
   assert.equal(p.height, 810);
@@ -121,6 +122,7 @@ test('again: a redesigned page, the film keeps its edit', async () => {
 <body>
 <section>
   <iframe src="assets/signup.cursor.html#t=${tin},${tout}" at="2" style="left: 160px; top: 90px; width: 1600px; height: 900px"></iframe>
+  <iframe id="closer" src="assets/signup.camera.html#t=${tin},${tout}" at="${2 + tout - tin + 1}" style="left: 160px; top: 90px; width: 1600px; height: 900px"></iframe>
 </section>
 <section>
   <iframe id="title" src="title.html#t=0,2"></iframe>
@@ -137,7 +139,7 @@ test('again: a redesigned page, the film keeps its edit', async () => {
   const dry = await again(join(assets, 'signup.mp4'), { film, dryRun: true, log: quiet });
   assert.equal(readFileSync(film, 'utf8'), html);
   for (const [f, h] of Object.entries(before)) assert.equal(md5(join(assets, f)), h, `${f} untouched by --dry-run`);
-  assert.equal(dry.plan.changes.length, 2);
+  assert.equal(dry.plan.changes.length, 3);
 
   const r = await again(join(assets, 'signup.mp4'), { film, log: quiet });
   const now = JSON.parse(readFileSync(join(assets, 'signup.record.json'), 'utf8'));
@@ -150,12 +152,14 @@ test('again: a redesigned page, the film keeps its edit', async () => {
   const text = readFileSync(film, 'utf8');
   assert.match(text, new RegExp(`src="assets/signup.mp4#t=${nin},${nout}" at="2"`));
   assert.match(text, new RegExp(`src="assets/signup.cursor.html#t=${nin},${nout}" at="2"`));
+  assert.match(text, new RegExp(`src="assets/signup.camera.html#t=${nin},${nout}" at="`));
   assert.match(text, /src="title.html#t=0,2"/);
   assert.deepEqual(r.plan.problems, []);
   // The new frame at the clip's start shows the new page (the v2 banner's yellow)
   const f = frameRGB(join(assets, 'signup.mp4'), frameAt(nin), 0.5);
   assert.ok(count(f, [255, 233, 168], 12) > 1000, 'the new take shows v2');
   assert.match(readFileSync(join(assets, 'signup.cursor.html'), 'utf8'), new RegExp(`duration: ${now.take.duration},`));
+  assert.match(readFileSync(join(assets, 'signup.camera.html'), 'utf8'), new RegExp(`duration: ${now.take.duration},`));
   site.set('v1');
 });
 
@@ -180,7 +184,7 @@ test('again from the command line: the same page, every clip already in place, a
   site.set('v1');
   assert.equal(r.signal, null, 'it exits by itself');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /2 clips of this take already in place/);
+  assert.match(r.stdout, /3 clips of this take already in place/);
   assert.doesNotMatch(r.stdout, /has no clip of this take/);
 });
 
@@ -217,6 +221,57 @@ test('--pointer draws the pointer into the video, and without it the video has n
   };
   assert.ok(dark(join(dir, 'pointer', 'take.mp4')) >= 12, 'the arrow is in the video');
   assert.ok(dark(join(dir, 'plain', 'take.mp4')) <= 3, 'no arrow without --pointer');
+});
+
+test('the camera page plays its take in a film host: moved in on a click, the same picture for the same t', async () => {
+  // The project served as a film host serves it, with ranges, so the video can seek
+  const server = createServer((req, res) => {
+    const file = join(dir, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    if (!existsSync(file)) return res.writeHead(404).end();
+    const body = readFileSync(file);
+    const type = file.endsWith('.mp4') ? 'video/mp4' : 'text/html; charset=utf-8';
+    const m = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? '');
+    if (!m) return res.writeHead(200, { 'content-type': type, 'accept-ranges': 'bytes', 'content-length': body.length }).end(body);
+    const a = Number(m[1]);
+    const b = m[2] ? Number(m[2]) : body.length - 1;
+    res.writeHead(206, { 'content-type': type, 'content-range': `bytes ${a}-${b}/${body.length}`, 'content-length': b - a + 1 });
+    res.end(body.subarray(a, b + 1));
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const browser = await Browser.launch(findBrowser());
+  try {
+    const page = await openPage(browser, { width: 1440, height: 810, scale: 1 });
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.filmHost = { version: "0.1", name: "test" };' });
+    await page.send('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/assets/signup.camera.html` });
+    await page.evaluate('new Promise((r) => { const go = () => (window.film ? window.film.ready.then(r) : setTimeout(go, 50)); go(); })');
+    const at = (t) => page.evaluate(`(async () => {
+      const v = document.getElementById('take');
+      const landed = new Promise((r) => v.addEventListener('seeked', r, { once: true }));
+      // As a host does: the new frame on screen, not only decoded
+      const shownFrame = new Promise((r) => { v.requestVideoFrameCallback(() => r()); setTimeout(r, 1000); });
+      window.film.frame(${t});
+      await landed;
+      await shownFrame;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return { time: v.currentTime, ready: v.readyState, scale: new DOMMatrix(getComputedStyle(document.getElementById('view')).transform).a };
+    })()`);
+    const shot = async () => (await page.send('Page.captureScreenshot', { format: 'png' })).data;
+    const take = JSON.parse(readFileSync(join(dir, 'assets', 'signup.record.json'), 'utf8')).take;
+    const down = take.events.find((e) => e.type === 'down');
+    const start = await at(0);
+    assert.equal(start.scale, 1);
+    assert.ok(start.ready >= 2, 'the take is decoded in the page');
+    const zoomed = await at(down.t + 0.8);
+    assert.ok(Math.abs(zoomed.scale - 1.7) < 0.05, `moved in on the click: ${zoomed.scale}`);
+    assert.ok(Math.abs(zoomed.time - (down.t + 0.8)) < 0.02, `the take at its own time: ${zoomed.time}`);
+    const a = await shot();
+    await at(take.duration - 0.2);
+    await at(down.t + 0.8);
+    assert.equal(await shot(), a, 'the same t draws the same picture after another frame');
+  } finally {
+    await browser.close();
+    await new Promise((r) => server.close(r));
+  }
 });
 
 test('inspect lists what can be pointed at, before and after steps', async () => {

@@ -37,9 +37,9 @@ const run = (cmd, args, cwd = ROOT) => new Promise((done, fail) => {
   child.on('error', fail);
   child.on('close', (code) => (code === 0 ? done() : fail(new Error(`${cmd} failed (${code})`))));
 });
-// OpenFilm 0.2.0 starts a browser and an encoder per worker; on a 16 GB laptop more than one can run out of memory
+// OpenFilm starts a browser and an encoder per worker; on a 16 GB laptop more than one can run out of memory
 const render = async (to) => {
-  await run('npx', ['-y', 'openfilm@0.2.0', 'render', '--workers', '1'], FILM);
+  await run('npx', ['-y', 'openfilm@0.2.1', 'render', '--workers', '1'], FILM);
   renameSync(join(FILM, 'film.mp4'), join(OUT, to));
 };
 

@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "repository": "https://github.com/WEBGRS/openfilm-web-demo/tree/main/skills/web-demo",
   "kind": "workflow",
   "order": 20,
@@ -20,10 +20,10 @@
     "es": "Una demo grabada de tu producto web real a partir de pasos, que se vuelve a grabar en cada versión sin perder el montaje."
   },
   "details": {
-    "en": "Best for: product demos, feature videos and tutorials of a site or web app that keeps changing.\nWhat it does: films the live product from a list of steps in your own Chrome or Edge, smooth on any machine, with the pointer as a layer of its own; after a release it films the same steps again, and every clip keeps its place and length in the edit.",
-    "zh-CN": "适合：网站或网页应用的产品演示、功能介绍和教程，尤其是经常改版的产品。\n它会：用你本机的 Chrome 或 Edge 按步骤录下线上产品，在哪台电脑上录都一样流畅，鼠标指针单独成一层；产品改版后按原步骤重录，剪辑里每个片段的位置和时长都不变。",
-    "ja": "こんなときに：よく更新されるサイトやウェブアプリの製品デモ、機能紹介、チュートリアル。\nすること：お使いの Chrome か Edge で公開中の製品を手順どおりに撮影します。どのパソコンでも滑らかで、ポインターは独立したレイヤーです。リリース後は同じ手順で撮り直し、編集の各クリップは位置も長さもそのままです。",
-    "ko": "이럴 때: 자주 바뀌는 사이트나 웹 앱의 제품 데모, 기능 소개, 튜토리얼.\n하는 일: 사용 중인 Chrome 또는 Edge로 실제 제품을 단계대로 촬영합니다. 어떤 컴퓨터에서도 매끄럽고, 포인터는 별도 레이어입니다. 릴리스 후에는 같은 단계로 다시 촬영하며, 편집의 각 클립은 위치와 길이가 그대로 유지됩니다.",
-    "es": "Ideal para: demos de producto, vídeos de funciones y tutoriales de un sitio o una app web que cambia a menudo.\nQué hace: graba el producto real a partir de una lista de pasos en tu propio Chrome o Edge, fluido en cualquier equipo, con el puntero en una capa propia; tras cada versión vuelve a grabar los mismos pasos y cada clip conserva su lugar y su duración en el montaje."
+    "en": "Best for: product demos, feature videos and tutorials of a site or web app that keeps changing.\nWhat it does: films the live product from a list of steps in your own Chrome or Edge, smooth on any machine, with the pointer as a layer of its own and a camera that moves in on each click; after a release it films the same steps again, and every clip keeps its place and length in the edit.",
+    "zh-CN": "适合：网站或网页应用的产品演示、功能介绍和教程，尤其是经常改版的产品。\n它会：用你本机的 Chrome 或 Edge 按步骤录下线上产品，在哪台电脑上录都一样流畅，鼠标指针单独成一层，镜头在每次点击时推近；产品改版后按原步骤重录，剪辑里每个片段的位置和时长都不变。",
+    "ja": "こんなときに：よく更新されるサイトやウェブアプリの製品デモ、機能紹介、チュートリアル。\nすること：お使いの Chrome か Edge で公開中の製品を手順どおりに撮影します。どのパソコンでも滑らかで、ポインターは独立したレイヤー、クリックのたびにカメラが寄ります。リリース後は同じ手順で撮り直し、編集の各クリップは位置も長さもそのままです。",
+    "ko": "이럴 때: 자주 바뀌는 사이트나 웹 앱의 제품 데모, 기능 소개, 튜토리얼.\n하는 일: 사용 중인 Chrome 또는 Edge로 실제 제품을 단계대로 촬영합니다. 어떤 컴퓨터에서도 매끄럽고, 포인터는 별도 레이어이며 클릭할 때마다 카메라가 다가갑니다. 릴리스 후에는 같은 단계로 다시 촬영하며, 편집의 각 클립은 위치와 길이가 그대로 유지됩니다.",
+    "es": "Ideal para: demos de producto, vídeos de funciones y tutoriales de un sitio o una app web que cambia a menudo.\nQué hace: graba el producto real a partir de una lista de pasos en tu propio Chrome o Edge, fluido en cualquier equipo, con el puntero en una capa propia y una cámara que se acerca en cada clic; tras cada versión vuelve a grabar los mismos pasos y cada clip conserva su lugar y su duración en el montaje."
   }
 }

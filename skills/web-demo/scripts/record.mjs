@@ -8,10 +8,12 @@ import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 const SIZE = '1440x810';
 const SCALE = 2;
 const FPS = 30;
+/** How far the camera page moves in on a click, unless the record or a step says otherwise. */
+export const ZOOM = 1.7;
 export const ACTIONS = ['click', 'hover', 'fill', 'type', 'press', 'select', 'scroll', 'scrollTo', 'wait', 'idle', 'until', 'goto', 'mark'];
 
 const HELP = `web-demo ${VERSION}: record a web product from a list of steps, and record it again when it changes.
@@ -20,6 +22,8 @@ const HELP = `web-demo ${VERSION}: record a web product from a list of steps, an
   node record.mjs again <take.mp4> [--film film.html] [--dry-run]  record it again from its steps; the film keeps its edit
   node record.mjs inspect <url> [--steps <steps>]                  what is on the page, with a selector for each thing;
                                                                    with --steps, after doing them (a dialog, a menu)
+  node record.mjs camera <take.mp4> [--zoom <n|off>]              write the camera page again after changing its zoom;
+                                                                   nothing is filmed
 
 Options for a take and for inspect:
   --size <w>x<h>    the window, in CSS px (${SIZE}; a phone: 390x844)
@@ -28,6 +32,7 @@ Options for a take and for inspect:
   --dark            the page in its dark theme
   --hide <css>      hidden in every frame (a cookie banner, a chat bubble); give it again for more
   --pointer         the pointer drawn into the video too, so it follows the video's speed
+  --zoom <n|off>    how far the camera page moves in on a click (${ZOOM}); 1 to 4, or off
   --browser <path>  Chrome or Edge; found by itself, or named by WEB_DEMO_BROWSER
   --ffmpeg <path>   ffmpeg; on the PATH, or named by WEB_DEMO_FFMPEG
 
@@ -47,6 +52,8 @@ Steps are a JSON list, one action each, run in order:
   {"until": "<sel>"}             waits, not recorded, until it is on the page; or "() => js" until that is true (20 s)
   {"goto": "<url>"}              opens another address
   {"mark": "name"}               names this moment of the take
+Any step can carry "zoom": 2.2 (its clicks and typing seen closer) or false (not at all); a hover with a zoom
+moves in on where the pointer rests. Changing a zoom needs no new take: "camera" writes the page again.
 A selector is CSS, text="Exact words" or text=words (contained, any case); " >> nth=1" picks the second match.
 A target outside the window is scrolled into view first. A link that opens a new tab: goto its address instead.
 The page runs on a virtual clock that moves one frame at a time, so a slow machine gives the same smooth take.
@@ -57,9 +64,11 @@ Beside the video:
   <name>.cursor.html   a page drawing the pointer and its clicks; on the track above the video, with the same at,
                        #t= and box, it follows the recording. A page plays at one speed: for a clip with a speed,
                        film the take with --pointer instead
+  <name>.camera.html   the take as a page that moves in on each click and follows the typing after it, the pointer
+                       and its clicks drawn in: in place of the video (and its cursor page), with the same #t=
 
 again records from <name>.record.json and puts the new take in place of the old. In film.html each clip of the
-take (the video and its cursor page) keeps its place and its length on the film; its #t= moves with the step or mark
+take (the video, its cursor page, its camera page) keeps its place and its length on the film; its #t= moves with the step or mark
 it falls in. A clip whose step or mark is not in the new take, or that would run past the new end, is listed and left
 as it was. film.html is the one in the current folder, or the nearest above the video; --dry-run only says what would
 change.`;
@@ -532,8 +541,9 @@ export function parseSteps(json) {
     if (keys.length !== 1) throw new Error(`step ${i + 1} needs exactly one of ${ACTIONS.join(', ')}: ${JSON.stringify(s)}`);
     const k = keys[0];
     const v = s[k];
-    const extra = Object.keys(s).filter((x) => x !== k && !(k === 'scroll' && (x === 'in' || x === 'ms')));
+    const extra = Object.keys(s).filter((x) => x !== k && x !== 'zoom' && !(k === 'scroll' && (x === 'in' || x === 'ms')));
     if (extra.length) throw new Error(`step ${i + 1}: "${extra[0]}" does not go with "${k}": ${JSON.stringify(s)}`);
+    if (s.zoom !== undefined) zoomValue(s.zoom, `step ${i + 1}`);
     const str = typeof v === 'string' && v.length > 0;
     const num = typeof v === 'number' && Number.isFinite(v);
     const pair = Array.isArray(v) && v.length === 2 && v.every((x) => typeof x === 'string') && v[0].length > 0;
@@ -552,7 +562,8 @@ const isCode = (s) => /=>|^\s*(async\s+)?function\b/.test(s);
 function openEncoder(ffmpeg, out, fps, width, height) {
   const args = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', '-',
     '-vf', `scale=${width}:${height}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-pix_fmt', 'yuv420p',
-    '-g', String(fps), '-r', String(fps), '-movflags', '+faststart', out];
+    // A key frame every quarter second: a page that sets the take's time frame by frame seeks it quickly
+    '-g', String(Math.max(1, Math.round(fps / 4))), '-r', String(fps), '-movflags', '+faststart', out];
   const proc = spawn(ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
   let err = '';
   let dead = null;
@@ -807,6 +818,7 @@ class Take {
 
 export const recordFileFor = (video) => join(dirname(video), `${basename(video, extname(video))}.record.json`);
 export const cursorFileFor = (video) => join(dirname(video), `${basename(video, extname(video))}.cursor.html`);
+export const cameraFileFor = (video) => join(dirname(video), `${basename(video, extname(video))}.camera.html`);
 
 function parseSize(s) {
   const m = /^(\d{2,5})x(\d{2,5})$/.exec(String(s));
@@ -837,6 +849,7 @@ export async function recordTake(o) {
   if (!(Number.isInteger(fps) && fps >= 10 && fps <= 60)) throw new Error(`--fps is a whole number from 10 to 60, not ${o.fps}`);
   if (!/^(https?|file):\/\//i.test(o.url)) throw new Error(`${o.url} is not a web address: give it whole, with https://`);
   const steps = parseSteps(o.steps ?? []);
+  const zoom = o.zoom === undefined ? undefined : zoomValue(o.zoom, '--zoom');
   const out = resolve(o.out);
   if (extname(out).toLowerCase() !== '.mp4') throw new Error(`${o.out}: the take is an .mp4`);
   const hide = o.hide ?? [];
@@ -892,6 +905,7 @@ export async function recordTake(o) {
     dark: !!o.dark,
     hide,
     pointer: !!o.pointer,
+    ...(zoom === undefined ? {} : { zoom }),
     take: {
       by: `web-demo ${VERSION}`,
       recorded: new Date().toISOString(),
@@ -905,8 +919,10 @@ export async function recordTake(o) {
   };
   writeFileSync(join(work, `${name}.record.json`), `${JSON.stringify(record, null, 1)}\n`);
   writeFileSync(join(work, `${name}.cursor.html`), cursorPage(record));
-  if (o.keepIn) return { record, work, files: [basename(out), `${name}.record.json`, `${name}.cursor.html`] };
-  for (const f of [basename(out), `${name}.record.json`, `${name}.cursor.html`]) moveFile(join(work, f), join(dirname(out), f));
+  writeFileSync(join(work, `${name}.camera.html`), cameraPage(record));
+  const files = [basename(out), `${name}.record.json`, `${name}.cursor.html`, `${name}.camera.html`];
+  if (o.keepIn) return { record, work, files };
+  for (const f of files) moveFile(join(work, f), join(dirname(out), f));
   rmSync(work, { recursive: true, force: true });
   return { record };
 }
@@ -977,6 +993,235 @@ if (!window.filmHost) {
 `;
 }
 
+// ---------------------------------------------------------------- the camera page
+
+/** Samples a second of the camera's path in the page. */
+const PATH_RATE = 60;
+
+/** A zoom as the record and steps give it: a number from 1 to 4, or false for none. */
+function zoomValue(z, where) {
+  if (z === false || z === 'off') return false;
+  const n = Number(z);
+  if (!(Number.isFinite(n) && n >= 1 && n <= 4)) throw new Error(`${where}: a zoom is a number from 1 to 4, or off, not ${JSON.stringify(z)}`);
+  return n;
+}
+
+/**
+ * Where the view moves in, in the take's own seconds: a span around each click, held through the typing after it,
+ * at the record's zoom or the step's own. Spans with the same focus close together become one; short gaps are
+ * bridged so the view pans from one to the next instead of pulling out between them.
+ * @returns {{ a: number, b: number, x: number, y: number, s: number }[]}
+ */
+export function zoomPlan(record) {
+  const take = record.take;
+  const base = record.zoom === undefined ? ZOOM : record.zoom === false ? 1 : record.zoom;
+  const steps = take.steps;
+  const stepOf = (t) => {
+    let i = -1;
+    for (let j = 0; j < steps.length; j++) if (steps[j].t <= t + 1e-6) i = j;
+    return i;
+  };
+  const scaleAt = (t) => {
+    const z = steps[stepOf(t)]?.step.zoom;
+    return z === false ? 1 : typeof z === 'number' ? z : base;
+  };
+  const spans = [];
+  let last = null;
+  for (const e of take.events) {
+    let span = null;
+    if (e.type === 'down') {
+      last = e;
+      span = { a: e.t - 0.6, b: e.t + 1.6, x: e.x, y: e.y, s: scaleAt(e.t) };
+    } else if (e.type === 'key' && last) span = { a: e.t - 0.3, b: e.t + 1.2, x: last.x, y: last.y, s: scaleAt(e.t) };
+    if (span && span.s > 1) spans.push(span);
+  }
+  // A hover with a zoom of its own moves in on where the pointer comes to rest
+  steps.forEach(({ t, step }, i) => {
+    if (step.hover === undefined || !(typeof step.zoom === 'number' && step.zoom > 1)) return;
+    const end = steps[i + 1]?.t ?? take.duration;
+    const rest = take.events.filter((e) => e.type === 'move' && e.t >= t && e.t <= end).pop();
+    if (rest) spans.push({ a: rest.t - 0.6, b: end + 0.6, x: rest.x, y: rest.y, s: step.zoom });
+  });
+  spans.sort((p, q) => p.a - q.a);
+  const out = [];
+  for (const s of spans) {
+    const l = out[out.length - 1];
+    if (l && s.a - l.b < 0.9 && Math.hypot(s.x - l.x, s.y - l.y) < 40 && s.s === l.s) l.b = Math.max(l.b, s.b);
+    else {
+      if (l && s.a < l.b) l.b = s.a;
+      out.push({ ...s });
+    }
+  }
+  for (let i = 1; i < out.length; i++) if (out[i].a - out[i - 1].b < 0.9) out[i - 1].b = out[i].a;
+  return out
+    .map((s) => ({ a: round3(Math.max(0, s.a)), b: round3(Math.min(take.duration, s.b)), x: s.x, y: s.y, s: s.s }))
+    .filter((s) => s.b > s.a);
+}
+
+// Implicit critically damped spring step
+function spring(x, v, goal, w, dt) {
+  const f = 1 + 2 * dt * w;
+  const hoo = dt * w * w;
+  const hhoo = dt * hoo;
+  const inv = 1 / (f + hhoo);
+  return [(f * x + dt * v + hhoo * goal) * inv, (v + hoo * (goal - x)) * inv];
+}
+
+/**
+ * The camera's path through the take, PATH_RATE samples a second: [scale, left, top], the part of the window in
+ * view. Two cascaded springs ease every move in and out; while zoomed in, the view keeps the pointer's next moves in
+ * it, and it never leaves the window.
+ */
+export function cameraPath(record) {
+  const take = record.take;
+  const [w, h] = record.size.split('x').map(Number);
+  const plan = zoomPlan(record);
+  const n = Math.max(1, Math.ceil(take.duration * PATH_RATE) + 1);
+  const moves = take.events.filter((e) => e.type === 'move' || e.type === 'down');
+  let mi = 0;
+  const pointer = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / PATH_RATE;
+    while (mi + 1 < moves.length && moves[mi + 1].t <= t + 1e-6) mi++;
+    pointer.push(moves[mi] ?? { x: w / 2, y: h / 2 });
+  }
+  const ahead = Math.round(0.4 * PATH_RATE);
+  const margin = 0.72;
+  const goals = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / PATH_RATE;
+    const span = plan.find((g) => t >= g.a && t < g.b);
+    const s = span ? span.s : 1;
+    let x = span ? span.x : w / 2;
+    let y = span ? span.y : h / 2;
+    if (span) {
+      // The pointer's next moves stay in the middle of the view
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (let j = i; j <= Math.min(n - 1, i + ahead); j++) {
+        x0 = Math.min(x0, pointer[j].x); x1 = Math.max(x1, pointer[j].x);
+        y0 = Math.min(y0, pointer[j].y); y1 = Math.max(y1, pointer[j].y);
+      }
+      const hold = (c, lo, hi, now, half) => {
+        if (hi - lo > 2 * half) lo = hi = now;
+        return lo < c - half ? lo + half : hi > c + half ? hi - half : c;
+      };
+      x = hold(x, x0, x1, pointer[i].x, (w / (2 * s)) * margin);
+      y = hold(y, y0, y1, pointer[i].y, (h / (2 * s)) * margin);
+    }
+    goals.push([s, Math.min(Math.max(x - w / (2 * s), 0), w - w / s), Math.min(Math.max(y - h / (2 * s), 0), h - h / s)]);
+  }
+  const wn = 2 * Math.PI * 1.1 * 1.6;
+  const dt = 1 / PATH_RATE;
+  const A = goals[0].slice(), B = goals[0].slice(), vA = [0, 0, 0], vB = [0, 0, 0];
+  return goals.map((g) => {
+    for (let k = 0; k < 3; k++) {
+      [A[k], vA[k]] = spring(A[k], vA[k], g[k], wn, dt);
+      [B[k], vB[k]] = spring(B[k], vB[k], A[k], wn, dt);
+    }
+    return [Math.round(B[0] * 10000) / 10000, Math.round(B[1] * 10) / 10, Math.round(B[2] * 10) / 10];
+  });
+}
+
+/**
+ * The take as a page that moves in on its clicks: the video, the pointer and its clicks, all in one frame, so they
+ * move together. Used in place of the video and its pointer page; "again" and "camera" write it anew.
+ */
+export function cameraPage(record) {
+  const take = record.take;
+  const [w, h] = record.size.split('x').map(Number);
+  const moves = take.events.filter((e) => e.type === 'move').map((e) => [e.t, e.x, e.y]);
+  const downs = take.events.filter((e) => e.type === 'down').map((e) => e.t);
+  const ups = take.events.filter((e) => e.type === 'up').map((e) => e.t);
+  const last = round3(take.duration - 0.5 / record.fps);
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Camera for ${take.video}</title>
+<!-- Made by web-demo with ${take.video}: the take, moving in on its clicks, with the pointer. Use it in place of the
+     video, with the same #t=. Change the zoom in ${basename(take.video, extname(take.video))}.record.json and run
+     "record.mjs camera"; "again" writes it anew with each take. -->
+<style>
+  html, body { margin: 0; width: ${w}px; height: ${h}px; overflow: hidden; background: #000; }
+  #view { position: absolute; left: 0; top: 0; width: ${w}px; height: ${h}px; transform-origin: 0 0; }
+  video { display: block; width: 100%; height: 100%; }
+  svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+</style>
+</head>
+<body>
+<div id="view">
+  <video id="take" src="${encodeURI(take.video).replace(/#/g, '%23').replace(/\?/g, '%3F')}" muted playsinline preload="auto"></video>
+  <svg viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <circle id="ring" r="0" fill="none" stroke="#000" stroke-opacity="0" stroke-width="3"></circle>
+    <g id="pointer"${record.pointer ? ' style="display: none"' : ''}>
+      <path d="M0 0 L0 23 L6 17.6 L10.4 27.4 L14.6 25.5 L10.2 15.9 L17.6 15.9 Z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"></path>
+    </g>
+  </svg>
+</div>
+<script type="module">
+// Size of the pointer, 1 = a desktop pointer at the take's scale
+const SIZE = 1;
+const RATE = ${PATH_RATE};
+// [scale, left, top] of the view, RATE times a second
+const PATH = ${JSON.stringify(cameraPath(record))};
+const MOVES = ${JSON.stringify(moves)};
+const DOWNS = ${JSON.stringify(downs)};
+const UPS = ${JSON.stringify(ups)};
+const video = document.getElementById('take');
+const view = document.getElementById('view');
+const pointer = document.getElementById('pointer');
+const ring = document.getElementById('ring');
+const last = (list, t, at = (x) => x) => {
+  let lo = 0, hi = list.length - 1, hit = -1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (at(list[mid]) <= t + 1e-6) { hit = mid; lo = mid + 1; } else hi = mid - 1; }
+  return hit;
+};
+function camera(t) {
+  const f = Math.min(Math.max(t * RATE, 0), PATH.length - 1);
+  const i = Math.floor(f), k = f - i, p = PATH[i], q = PATH[Math.min(i + 1, PATH.length - 1)];
+  return [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k, p[2] + (q[2] - p[2]) * k];
+}
+function draw(t) {
+  const [s, x, y] = camera(t);
+  view.style.transform = \`scale(\${s}) translate(\${-x}px, \${-y}px)\`;
+  const m = MOVES[Math.max(0, last(MOVES, t, (e) => e[0]))] ?? [0, ${w / 2}, ${h / 2}];
+  const d = last(DOWNS, t), u = last(UPS, t);
+  const pressed = d >= 0 && (u < 0 || UPS[u] < DOWNS[d]);
+  // The pointer grows with the view, but less
+  const size = SIZE / Math.sqrt(s);
+  pointer.setAttribute('transform', \`translate(\${m[1]} \${m[2]}) scale(\${size * (pressed ? 0.86 : 1)})\`);
+  const since = d >= 0 ? t - DOWNS[d] : Infinity;
+  const k = since / 0.5;
+  if (k >= 0 && k < 1 && SIZE > 0) {
+    ring.setAttribute('cx', m[1]);
+    ring.setAttribute('cy', m[2]);
+    ring.setAttribute('r', String((6 + 26 * Math.sqrt(k)) * size));
+    ring.setAttribute('stroke-width', String(3 * size));
+    ring.setAttribute('stroke-opacity', String(0.45 * (1 - k)));
+  } else ring.setAttribute('stroke-opacity', '0');
+}
+function frame(t) {
+  video.currentTime = Math.min(Math.max(t, 0), ${last});
+  draw(t);
+}
+const ready = new Promise((done) => {
+  if (video.readyState >= 2) done();
+  else { video.addEventListener('loadeddata', done, { once: true }); video.addEventListener('error', done, { once: true }); }
+});
+window.film = { frame, duration: ${take.duration}, width: ${w}, height: ${h}, ready };
+if (!window.filmHost) {
+  // Opened on its own: the take plays, and the view follows it
+  video.loop = true;
+  ready.then(() => video.play().catch(() => undefined));
+  const loop = () => { draw(video.currentTime); requestAnimationFrame(loop); };
+  loop();
+}
+</script>
+</body>
+</html>
+`;
+}
+
 // ---------------------------------------------------------------- keeping the film's edit
 
 /** Moments a clip can be held to: the start, each step (by what it is and which time it came), each mark. */
@@ -984,7 +1229,9 @@ export function anchors(take) {
   const seen = new Map();
   const out = [{ key: 'start', t: 0, label: 'the start' }];
   take.steps.forEach(({ t, step }, i) => {
-    const j = typeof step.mark === 'string' ? `mark:${step.mark}` : `step:${JSON.stringify(step)}`;
+    // A step's zoom is how it is shown, not what it does: changing it keeps the step's place
+    const { zoom, ...done } = step;
+    const j = typeof step.mark === 'string' ? `mark:${step.mark}` : `step:${JSON.stringify(done)}`;
     const n = seen.get(j) ?? 0;
     seen.set(j, n + 1);
     const label = typeof step.mark === 'string' ? `mark "${step.mark}"` : `step ${i + 1} ${JSON.stringify(step)}`;
@@ -1135,7 +1382,7 @@ export async function again(videoArg, o = {}) {
     for (const s of moved) lines.push(s.to === undefined ? `  ${s.label}: not in the new take` : `  ${s.label}: ${fmt(s.from)} s -> ${fmt(s.to)} s`);
     let plan = null;
     if (film) {
-      plan = remapFilm(readFileSync(film, 'utf8'), { filmDir: dirname(film), files: [video, cursorFileFor(video)], before: before.take, after });
+      plan = remapFilm(readFileSync(film, 'utf8'), { filmDir: dirname(film), files: [video, cursorFileFor(video), cameraFileFor(video)], before: before.take, after });
       for (const c of plan.changes) lines.push(`  clip ${c.id}: ${c.from} -> ${c.to} (with ${c.by})`);
       for (const p of plan.problems) lines.push(`  LISTED clip ${p.id}: ${p.why}`);
       if (plan.kept.length) lines.push(`  ${plan.kept.length} clip${plan.kept.length > 1 ? 's' : ''} of this take already in place: ${plan.kept.join(', ')}`);
@@ -1155,6 +1402,44 @@ export async function again(videoArg, o = {}) {
       // Left in the temp folder
     }
   }
+}
+
+/** The zoom spans of a take, one line each, with the step each belongs to. */
+export function zoomLines(record) {
+  const steps = record.take.steps;
+  const plan = zoomPlan(record);
+  if (!plan.length) return ['camera: no zoom (no clicks, or zoom off)'];
+  return plan.map((s) => {
+    const at = Math.min(s.b, s.a + 0.6);
+    let i = -1;
+    for (let j = 0; j < steps.length; j++) if (steps[j].t <= at + 1e-6) i = j;
+    const what = i >= 0 ? `step ${i + 1} ${JSON.stringify(steps[i].step)}` : 'the start';
+    return `camera: ${s.s}x ${fmt(s.a)}-${fmt(s.b)} s on ${Math.round(s.x)},${Math.round(s.y)} (${what})`;
+  });
+}
+
+/** The camera page made again from the record: after its zoom or a step's zoom was changed. Nothing is filmed. */
+export function camera(videoArg, o = {}) {
+  const video = resolve(videoArg);
+  const recFile = recordFileFor(video);
+  if (!existsSync(recFile)) throw new Error(`${shown(recFile)} is not there: only a take made by record.mjs has a camera page`);
+  const record = JSON.parse(readFileSync(recFile, 'utf8'));
+  parseSteps(record.steps);
+  if (o.zoom !== undefined) record.zoom = zoomValue(o.zoom, '--zoom');
+  else if (record.zoom !== undefined) record.zoom = zoomValue(record.zoom, `zoom in ${shown(recFile)}`);
+  // The take's steps take the zoom of the steps above, which must otherwise be the ones filmed
+  const filmed = record.take.steps;
+  const plain = (s) => {
+    const { zoom, ...rest } = s;
+    return JSON.stringify(rest);
+  };
+  if (record.steps.length !== filmed.length || record.steps.some((s, i) => plain(s) !== plain(filmed[i].step))) {
+    throw new Error(`the steps in ${shown(recFile)} are not the ones filmed: "again" films them`);
+  }
+  filmed.forEach((x, i) => (x.step = record.steps[i]));
+  writeFileSync(recFile, `${JSON.stringify(record, null, 1)}\n`);
+  writeFileSync(cameraFileFor(video), cameraPage(record));
+  return [`${shown(cameraFileFor(video))}  written`, ...zoomLines(record)];
 }
 
 // ---------------------------------------------------------------- inspect
@@ -1218,11 +1503,16 @@ async function main(argv) {
       steps: { type: 'string' }, size: { type: 'string' }, scale: { type: 'string' }, fps: { type: 'string' },
       dark: { type: 'boolean' }, hide: { type: 'string', multiple: true }, pointer: { type: 'boolean' }, browser: { type: 'string' },
       ffmpeg: { type: 'string' }, film: { type: 'string' }, 'dry-run': { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
-      version: { type: 'boolean' },
+      version: { type: 'boolean' }, zoom: { type: 'string' },
     },
   });
   if (v.version) return console.log(VERSION);
   if (v.help || !p.length) return console.log(HELP);
+  if (p[0] === 'camera') {
+    if (p.length !== 2) throw new Error('camera takes the take whose camera page to write: camera <take.mp4>');
+    console.log(camera(p[1], { zoom: v.zoom }).join('\n'));
+    return;
+  }
   if (p[0] === 'again') {
     if (p.length !== 2) throw new Error('again takes the take to record again: again <take.mp4>');
     const r = await again(p[1], { film: v.film, dryRun: v['dry-run'], browser: v.browser, ffmpeg: v.ffmpeg });
@@ -1236,14 +1526,16 @@ async function main(argv) {
   }
   if (p.length !== 2) throw new Error('give the address and the video to write: <url> <take.mp4> --steps <steps>');
   const out = resolve(p[1]);
-  const { record } = await recordTake({ url: p[0], out, steps: readSteps(v.steps), size: v.size, scale: v.scale, fps: v.fps, dark: v.dark, hide: v.hide, pointer: v.pointer, browser: v.browser, ffmpeg: v.ffmpeg });
+  const { record } = await recordTake({ url: p[0], out, steps: readSteps(v.steps), size: v.size, scale: v.scale, fps: v.fps, dark: v.dark, hide: v.hide, pointer: v.pointer, zoom: v.zoom, browser: v.browser, ffmpeg: v.ffmpeg });
   const t = record.take;
   const marks = t.steps.filter((s) => typeof s.step.mark === 'string');
   console.log([
     `${shown(out)}  ${t.width} x ${t.height}, ${fmt(t.duration)} s, ${record.fps} fps`,
     `${shown(recordFileFor(out))}  what was recorded and what happened (${t.steps.length} steps)`,
     `${shown(cursorFileFor(out))}  the pointer, a page to lay over the video`,
+    `${shown(cameraFileFor(out))}  the take moving in on its clicks, with the pointer: a page to use in place of the video`,
     ...(marks.length ? [`marks: ${marks.map((s) => `${s.step.mark} ${fmt(s.t)} s`).join(' · ')}`] : []),
+    ...zoomLines(record),
   ].join('\n'));
 }
 

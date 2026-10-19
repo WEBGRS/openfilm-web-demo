@@ -32,12 +32,13 @@ node record.mjs https://example.com assets/signup.mp4 --steps signup.json   # fi
 node record.mjs again assets/signup.mp4                                     # film it again, move its clips
 node record.mjs inspect https://example.com                                 # what can be pointed at, with selectors
 node record.mjs inspect https://example.com --steps open-menu.json          # the same, after doing some steps
+node record.mjs camera assets/signup.mp4 --zoom 2                           # the camera page again, closer; nothing filmed
 ```
 
 Steps are a JSON list: `click`, `hover`, `fill`, `type`, `press`, `select`, `scroll`, `scrollTo`, `wait`, `idle`,
 `until`, `goto` and `mark`. `--help` lists them all with the options (`--size`, `--scale`, `--dark`, `--hide`...).
 
-A take writes three files beside the video:
+A take writes four files beside the video:
 
 - `signup.record.json`: what to film (address, steps, size) and what happened (when each step began, every pointer
   move, click and key). Change the steps here and run `again` to film something different.
@@ -45,7 +46,12 @@ A take writes three files beside the video:
   with the same `at`, `#t=` and box, and it follows the take. The video itself has no pointer, so you can restyle
   or drop it. A page plays at one speed, so for a clip you want to speed up, film the take with `--pointer`: the
   pointer is then drawn into the video.
-- `signup.mp4`: H.264, 30 fps, 2880 x 1620 at the default 1440 x 810 window and scale 2.
+- `signup.camera.html`: the take as an OpenFilm page that moves in on each click, follows the typing after it and
+  keeps the pointer in view, with the pointer and its clicks drawn in. Use it in place of the video, with the same
+  `#t=`. It moves in 1.7 times by default; `--zoom` sets it for the take, and `"zoom": 2.2` or `"zoom": false` on a
+  step sets it for that step's clicks. After changing a zoom, `camera` writes the page again without filming.
+- `signup.mp4`: H.264, 30 fps, 2880 x 1620 at the default 1440 x 810 window and scale 2, a key frame every quarter
+  second so a page can seek it frame by frame.
 
 The page runs on a virtual clock: time moves one frame per captured frame, for `requestAnimationFrame`, timers,
 `Date`, `performance.now()` and CSS animations. A slow machine gives the same smooth take, and the same steps give
@@ -54,7 +60,7 @@ scale 2, and about one and a half times at `--scale 1`.
 
 ## How `again` keeps the edit
 
-Every clip of a take (the video and its cursor page) starts inside some step or mark. `again` films the same steps,
+Every clip of a take (the video, its cursor page or its camera page) starts inside some step or mark. `again` films the same steps,
 finds that step or mark in the new take, and moves the clip's `#t=` by as much as it moved. The clip's length on
 the film does not change, and neither does anything else in `film.html`. A clip whose step or mark is not in the new
 take, or that would run past the new end, is listed and left as it was. `--dry-run` shows the changes without making
@@ -66,6 +72,8 @@ them. If a step can no longer be done (a button was renamed), `again` stops and 
   through the steps with a demo account; the steps are saved in plain text.
 - A link that opens a new tab is not followed: `goto` its address instead.
 - Iframes run in real time; only the top page is on the virtual clock.
+- A page plays at one speed, so the cursor and camera pages can't be sped up in the film. Leave the waiting out of
+  the take with `idle` and `until` instead, or film it with `--pointer` and speed up the video.
 
 ## Develop
 

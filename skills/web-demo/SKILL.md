@@ -34,16 +34,17 @@ demo, not this: what this film offers the person is that the next release costs 
 `node <this skill's folder>/scripts/record.mjs` films a take in the person's own Chrome or Edge: from an address and a
 list of steps it writes the video, its record (what to film, and when each step and mark happened) and a page that
 draws the pointer and its clicks, laid over the video with the same `at`, `#t=` and box; a page plays at one speed, so
-a take meant to change speed is filmed with the pointer drawn into it (`--pointer`). `again` films a take again from
-its record and moves its clips in film.html; `inspect` lists what can be pointed at on a page, before or after some
+a take meant to change speed is filmed with the pointer drawn into it (`--pointer`). It also writes a camera page: the
+take moving in on each click and following the typing after it, the pointer drawn in, used in place of the video with
+the same `#t=`; how far it moves in is set for the take or for one step, and `camera` writes it again without filming.
+`again` films a take again from its record and moves its clips in film.html; `inspect` lists what can be pointed at on a page, before or after some
 steps, with a selector for each. `--help` says how. The page runs on a virtual clock, one frame at a time, so a slow
 machine gives a smooth take and the same steps give the same motion. A take costs six to seven times its length at the
 default scale: film one shot per take.
 
 A take is a recording like any other: trimmed with `#t=`, sped up with `speed`, never re-encoded; a page can play it
-silent with its time set from t when the picture should move over it. `npx openfilm capture` takes stills of the live
-product, `look` checks the film, `get` brings voice, music and sound; and anything you can make pictures and motion
-with.
+silent with its time set from t when the picture should move over it. `look` checks the film, `get` brings voice,
+music and sound; and anything you can make pictures and motion with.
 
 ## With the person
 

@@ -1,6 +1,6 @@
 {
   "name": "openfilm-web-demo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "An OpenFilm skill: film a demo of your web product from steps, and film it again after every release.",
   "type": "module",
