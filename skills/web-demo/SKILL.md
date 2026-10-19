@@ -37,7 +37,7 @@ draws the pointer and its clicks, laid over the video with the same `at`, `#t=` 
 a take meant to change speed is filmed with the pointer drawn into it (`--pointer`). `again` films a take again from
 its record and moves its clips in film.html; `inspect` lists what can be pointed at on a page, before or after some
 steps, with a selector for each. `--help` says how. The page runs on a virtual clock, one frame at a time, so a slow
-machine gives a smooth take and the same steps give the same motion. A take costs about six times its length at the
+machine gives a smooth take and the same steps give the same motion. A take costs six to seven times its length at the
 default scale: film one shot per take.
 
 A take is a recording like any other: trimmed with `#t=`, sped up with `speed`, never re-encoded; a page can play it

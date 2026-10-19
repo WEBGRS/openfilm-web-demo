@@ -48,8 +48,8 @@ A take writes three files beside the video:
 
 The page runs on a virtual clock: time moves one frame per captured frame, for `requestAnimationFrame`, timers,
 `Date`, `performance.now()` and CSS animations. A slow machine gives the same smooth take, and the same steps give
-the same pointer path every time. Filming takes about six times the take's length at scale 2 (about three at
-`--scale 1`).
+the same pointer path every time. Filming takes six to seven times the take's length at scale 2, and about one and
+a half times at `--scale 1`.
 
 ## How `again` keeps the edit
 
@@ -69,7 +69,7 @@ them. If a step can no longer be done (a button was renamed), `again` stops and 
 ## Develop
 
 ```sh
-npm test            # unit tests, then real takes in Chrome or Edge (a few minutes)
+npm test            # unit tests, then real takes in Chrome or Edge (about two minutes)
 npm run check       # the skill folder against OpenFilm's skill rules
 ```
 

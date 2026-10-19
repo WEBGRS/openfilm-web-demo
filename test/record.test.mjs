@@ -51,6 +51,8 @@ before(async () => {
 
 after(async () => {
   await site?.close();
+  // WEB_DEMO_KEEP: a copy of the test project, to open in OpenFilm
+  if (dir && process.env.WEB_DEMO_KEEP) cpSync(dir, process.env.WEB_DEMO_KEEP, { recursive: true });
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -225,8 +227,3 @@ test('inspect lists what can be pointed at, before and after steps', async () =>
   assert.match(after, /#title · input\[text\] · Buy milk/);
 });
 
-test('a project folder can be copied for OpenFilm checks', () => {
-  // Leaves a copy of the project in WEB_DEMO_KEEP for test/openfilm.mjs
-  if (!process.env.WEB_DEMO_KEEP) return;
-  cpSync(dir, process.env.WEB_DEMO_KEEP, { recursive: true });
-});
