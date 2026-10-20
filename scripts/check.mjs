@@ -23,7 +23,8 @@ const say = (name, what) => problems.push(`${name}: ${what}`);
 
 /** The front matter's fields, one line each. @param {string} text */
 function frontMatter(text) {
-  const m = /^---\n([\s\S]*?)\n---\n/.exec(text);
+  // A Windows checkout may have CRLF line ends
+  const m = /^---\n([\s\S]*?)\n---\n/.exec(text.replace(/\r\n/g, '\n'));
   if (!m) return null;
   /** @type {Record<string, string>} */
   const fields = {};
